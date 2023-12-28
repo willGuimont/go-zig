@@ -1,4 +1,10 @@
+const std = @import("std");
+const graph = @import("graph.zig");
 const w4 = @import("wasm4.zig");
+
+var buffer: [640]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&buffer);
+const allocator = fba.allocator();
 
 const smiley = [8]u8{
     0b11000011,
@@ -11,8 +17,9 @@ const smiley = [8]u8{
     0b11000011,
 };
 
-export fn start() void {
-}
+var graph_state = graph.Graph(i32).init(allocator);
+
+export fn start() void {}
 
 export fn update() void {
     w4.DRAW_COLORS.* = 2;
