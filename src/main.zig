@@ -17,9 +17,50 @@ const smiley = [8]u8{
     0b11000011,
 };
 
-var graph_state = graph.Graph(i32).init(allocator);
+const StoneColor = enum(u1) {
+    black,
+    white,
+};
 
-export fn start() void {}
+var graph_state = graph.Graph(i32, ?StoneColor).init(allocator);
+
+fn key_predicate(_: i32) bool {
+    return true;
+}
+
+fn is_black(c: ?StoneColor) bool {
+    return c == .black;
+}
+
+fn is_white(c: ?StoneColor) bool {
+    return c == .white;
+}
+
+export fn start() void {
+    w4.trace("Init");
+    graph_state.set_node(1, StoneColor.white) catch unreachable;
+    graph_state.set_node(2, StoneColor.white) catch unreachable;
+    graph_state.set_node(3, StoneColor.white) catch unreachable;
+    graph_state.set_node(4, StoneColor.black) catch unreachable;
+    graph_state.set_node(5, StoneColor.black) catch unreachable;
+    graph_state.set_node(6, null) catch unreachable;
+    graph_state.add_edge(1, 2) catch unreachable;
+    graph_state.add_edge(2, 3) catch unreachable;
+    graph_state.add_edge(4, 5) catch unreachable;
+    graph_state.add_edge(5, 6) catch unreachable;
+    graph_state.add_edge(1, 4) catch unreachable;
+    graph_state.add_edge(2, 5) catch unreachable;
+    graph_state.add_edge(3, 6) catch unreachable;
+    graph_state.prune() catch unreachable;
+
+    var x = graph_state.seach(1, key_predicate, is_white) catch unreachable;
+    defer x.deinit();
+    const s1 = x.visited.count();
+    const s2 = x.seen.count();
+    const s = std.fmt.allocPrint(allocator, "visited {d} seen {d}", .{ s1, s2 }) catch "error";
+    defer allocator.free(s);
+    w4.trace(s);
+}
 
 export fn update() void {
     w4.DRAW_COLORS.* = 2;
@@ -32,4 +73,5 @@ export fn update() void {
 
     w4.blit(&smiley, 76, 76, 8, 8, w4.BLIT_1BPP);
     w4.text("Press X to blink", 16, 90);
+
 }
