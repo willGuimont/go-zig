@@ -4,7 +4,7 @@ pub fn Graph(comptime K: type, comptime V: type) type {
     return struct {
         const This = @This();
         const NodeMap = std.AutoHashMap(K, V);
-        const NodeSet = std.AutoArrayHashMap(K, void);
+        pub const NodeSet = std.AutoArrayHashMap(K, void);
         const EdgeMap = std.AutoHashMap(K, NodeSet);
         const SearchOutput = struct {
             visited: NodeSet,
@@ -25,13 +25,13 @@ pub fn Graph(comptime K: type, comptime V: type) type {
 
         nodes: NodeMap,
         edges: EdgeMap,
-        fpa: std.mem.Allocator,
+        allocator: std.mem.Allocator,
 
-        pub fn init(fpa: std.mem.Allocator) This {
+        pub fn init(allocator: std.mem.Allocator) This {
             return Graph(K, V){
-                .nodes = NodeMap.init(fpa),
-                .edges = EdgeMap.init(fpa),
-                .fpa = fpa,
+                .nodes = NodeMap.init(allocator),
+                .edges = EdgeMap.init(allocator),
+                .allocator = allocator,
             };
         }
 
@@ -43,25 +43,27 @@ pub fn Graph(comptime K: type, comptime V: type) type {
             this.edges.deinit();
         }
 
-        pub fn get_node(this: *This, key: K) ?V {
+        pub fn getNode(this: *const This, key: K) ?V {
             return this.nodes.get(key);
         }
 
-        pub fn set_node(this: *This, key: K, value: V) !void {
+        pub fn setNode(this: *This, key: K, value: V) !void {
             try this.nodes.put(key, value);
-            try this.edges.put(key, NodeSet.init(this.fpa));
+            if (!this.edges.contains(key)) {
+                try this.edges.put(key, NodeSet.init(this.allocator));
+            }
         }
 
-        pub fn get_neighbors(this: *This, key: K) ?NodeSet {
+        pub fn getNeighbors(this: *const This, key: K) ?NodeSet {
             return this.edges.get(key);
         }
 
-        pub fn add_edge(this: *This, from: K, to: K) !void {
+        pub fn addEdge(this: *This, from: K, to: K) !void {
             try this.edges.getPtr(from).?.put(to, {});
         }
 
         pub fn prune(this: *This) !void {
-            var to_remove = std.ArrayList(K).init(this.fpa);
+            var to_remove = std.ArrayList(K).init(this.allocator);
             defer to_remove.deinit();
 
             var it = this.edges.iterator();
@@ -76,12 +78,11 @@ pub fn Graph(comptime K: type, comptime V: type) type {
             }
         }
 
-        pub fn seach(this: *This, start: K, comptime key_predicate: fn (K) bool, comptime value_predicate: fn (V) bool) !SearchOutput {
-            var output = SearchOutput.init(this.fpa);
-            defer output.deinit();
+        pub fn seach(this: *const This, start: K, comptime key_predicate: fn (K) bool, comptime value_predicate: fn (V) bool) !SearchOutput {
+            var output = SearchOutput.init(this.allocator);
             try output.seen.put(start, {});
 
-            var queue = NodeSet.init(this.fpa);
+            var queue = NodeSet.init(this.allocator);
             defer queue.deinit();
 
             try queue.put(start, {});

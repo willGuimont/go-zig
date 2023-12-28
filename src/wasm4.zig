@@ -1,5 +1,6 @@
 //
 // WASM-4: https://wasm4.org/docs
+const std = @import("std");
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -134,3 +135,10 @@ extern fn traceUtf8(strPtr: [*]const u8, strLen: usize) void;
 /// See https://github.com/aduros/wasm4/issues/244 for discussion and type-safe
 /// alternatives.
 pub extern fn tracef(x: [*:0]const u8, ...) void;
+
+/// Safe version of `tracef` that uses compile-time type checking.
+pub fn tracefs(comptime format: []const u8, values: anytype, allocator: std.mem.Allocator) void {
+    const s = std.fmt.allocPrint(allocator, format, values) catch "error";
+    defer allocator.free(s);
+    trace(s);
+}
