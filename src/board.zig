@@ -27,10 +27,15 @@ pub const Board = struct {
         black: f32,
         white: f32,
     };
+    pub const GoError = error{
+        InvalidMove,
+        Suicide,
+    };
 
     board_graph: BoardGraph,
     width: usize,
     height: usize,
+    score: Score,
     allocator: std.mem.Allocator,
 
     pub fn init(width: usize, height: usize, allocator: std.mem.Allocator) !This {
@@ -39,12 +44,27 @@ pub const Board = struct {
             .board_graph = g,
             .width = width,
             .height = height,
+            .score = .{ .black = 0, .white = 6.5 },
             .allocator = allocator,
         };
     }
 
-    fn deinit(this: *This) void {
+    pub fn deinit(this: *This) void {
         this.board_graph.deinit();
+    }
+
+    pub fn clone(this: *const This) !This {
+        return .{
+            .board_graph = try this.board_graph.clone(),
+            .width = this.width,
+            .height = this.height,
+            .score = this.score,
+            .allocator = this.allocator,
+        };
+    }
+
+    pub fn eql_board(this: *This, other: *This) bool {
+        return this.board_graph.eql(&other.board_graph);
     }
 
     fn positionToIndex(this: *const This, x: usize, y: usize) usize {
@@ -93,8 +113,6 @@ pub const Board = struct {
                 }
             }
         }
-
-        try this.board_graph.prune();
     }
 
     pub fn getStone(this: *const This, x: usize, y: usize) ?StoneColor {
@@ -108,7 +126,28 @@ pub const Board = struct {
 
     pub fn putStone(this: *This, x: usize, y: usize, color: StoneColor) !void {
         const p = this.positionToIndex(x, y);
+        const is_empty_pos = this.board_graph.getNode(p).? == null;
+        if (!is_empty_pos) {
+            return error.InvalidMove;
+        }
+
+        var next_board = try this.clone();
+        defer next_board.deinit();
+
+        try next_board.board_graph.setNode(p, color);
+        try next_board.updateAround(x, y);
+
+        var group = try next_board.getGroupLiberty(x, y);
+        defer group.deinit();
+        if (group.liberties == 0) {
+            return error.Suicide;
+        }
+
         try this.board_graph.setNode(p, color);
+        try this.updateAround(x, y);
+    }
+
+    fn updateAround(this: *This, x: usize, y: usize) !void {
         const neighbors = this.getNeighbors(x, y).?;
         for (neighbors.keys()) |k| {
             const xy = this.indexToPosition(k);
@@ -116,7 +155,7 @@ pub const Board = struct {
         }
     }
 
-    fn getGroupLiberty(this: *This, x: usize, y: usize) !Group {
+    fn getGroupLiberty(this: *const This, x: usize, y: usize) !Group {
         const p = this.positionToIndex(x, y);
         const stone = this.getStone(x, y);
 
@@ -143,6 +182,13 @@ pub const Board = struct {
         var group = try this.getGroupLiberty(x, y);
         defer group.deinit();
         if (group.liberties == 0) {
+            const color = this.getStone(x, y);
+            if (color == .black) {
+                this.score.white += @floatFromInt(group.stones.count());
+            } else {
+                this.score.black += @floatFromInt(group.stones.count());
+            }
+
             for (group.stones.keys()) |k| {
                 try this.board_graph.setNode(k, null);
             }
@@ -165,3 +211,57 @@ pub const Board = struct {
         return .{ 0, 0 };
     }
 };
+
+test "go" {
+    var board = try Board.init(9, 9, std.testing.allocator);
+    defer board.deinit();
+    try board.createSquareBoard();
+
+    // Capturing
+    try board.putStone(0, 0, .black);
+    try board.putStone(1, 0, .white);
+    try board.putStone(0, 1, .white);
+
+    try std.testing.expectEqual(board.getStone(0, 0), null);
+    try std.testing.expectEqual(board.getStone(1, 0), .white);
+    try std.testing.expectEqual(board.getStone(0, 1), .white);
+    try std.testing.expectEqual(board.score.white, 7.5);
+
+    // Already occupied
+    const err_occupied = board.putStone(1, 0, .black);
+    try std.testing.expectError(error.InvalidMove, err_occupied);
+
+    // Suicide
+    const err_suicide = board.putStone(0, 0, .black);
+    try std.testing.expectError(error.Suicide, err_suicide);
+
+    // Clone
+    var cloned = try board.clone();
+    defer cloned.deinit();
+
+    try cloned.putStone(4, 4, .black);
+
+    try std.testing.expectEqual(cloned.getStone(4, 4), .black);
+    try std.testing.expectEqual(board.getStone(4, 4), null);
+
+    // TODO test scoreTerritory
+}
+
+test "go capture in closed space" {
+    var board = try Board.init(9, 9, std.testing.allocator);
+    defer board.deinit();
+    try board.createSquareBoard();
+
+    try board.putStone(1, 0, .black);
+    try board.putStone(2, 0, .white);
+    try board.putStone(0, 1, .black);
+    try board.putStone(3, 1, .white);
+    try board.putStone(1, 2, .black);
+    try board.putStone(2, 2, .white);
+    try board.putStone(2, 1, .black);
+
+    try board.putStone(1, 1, .white);
+
+    try std.testing.expectEqual(board.getStone(1, 1), .white);
+    try std.testing.expectEqual(board.getStone(2, 1), null);
+}
