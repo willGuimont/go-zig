@@ -1,13 +1,18 @@
 const std = @import("std");
 const graph = @import("graph.zig");
-// TODO: remove this
-const w4 = @import("wasm4.zig");
 
 pub const Board = struct {
     const This = @This();
     pub const StoneColor = enum(u1) {
         black,
         white,
+
+        pub fn opposite(this: StoneColor) StoneColor {
+            if (this == .black) {
+                return .white;
+            }
+            return .black;
+        }
     };
     const BoardGraph = graph.Graph(usize, ?StoneColor);
     const Group = struct {
@@ -17,6 +22,10 @@ pub const Board = struct {
         fn deinit(this: *Group) void {
             this.stones.deinit();
         }
+    };
+    pub const Score = struct {
+        black: f32,
+        white: f32,
     };
 
     board_graph: BoardGraph,
@@ -133,10 +142,8 @@ pub const Board = struct {
     fn killGroupIfNoLiberty(this: *This, x: usize, y: usize) !void {
         var group = try this.getGroupLiberty(x, y);
         defer group.deinit();
-        w4.tracefs("group: {?} {?}", .{ group.liberties, group.stones.count() }, this.allocator);
         if (group.liberties == 0) {
             for (group.stones.keys()) |k| {
-                w4.tracefs("removing stone at {?}", .{k}, this.allocator);
                 try this.board_graph.setNode(k, null);
             }
         }
@@ -152,7 +159,7 @@ pub const Board = struct {
         try this.board_graph.setNode(p, null);
     }
 
-    pub fn scoreTerritory(this: *const This) std.meta.Tuple(&.{ usize, usize }) {
+    pub fn scoreTerritory(this: *const This) Score {
         _ = this;
         // TODO
         return .{ 0, 0 };
