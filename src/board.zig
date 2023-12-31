@@ -27,6 +27,25 @@ pub const Board = struct {
         black: f32,
         white: f32,
     };
+    pub const Territory = struct {
+        black: BoardGraph.NodeSet,
+        white: BoardGraph.NodeSet,
+        allocator: std.mem.Allocator,
+
+        pub fn deinit(this: *Territory) void {
+            this.black.deinit();
+            this.white.deinit();
+        }
+
+        pub fn toPosition(this: *const Territory, nodes: *const BoardGraph.NodeSet, game: *const Board) !std.ArrayList(std.meta.Tuple(&.{ usize, usize })) {
+            var positions = std.ArrayList(std.meta.Tuple(&.{ usize, usize })).init(this.allocator);
+            for (nodes.keys()) |k| {
+                const xy = game.indexToPosition(k);
+                try positions.append(xy);
+            }
+            return positions;
+        }
+    };
     pub const GoError = error{
         InvalidMove,
         Suicide,
@@ -205,10 +224,61 @@ pub const Board = struct {
         try this.board_graph.setNode(p, null);
     }
 
-    pub fn scoreTerritory(this: *const This) Score {
-        _ = this;
-        // TODO
-        return .{ 0, 0 };
+    pub fn getTerritory(this: *const This) !Territory {
+        var queue = BoardGraph.NodeSet.init(this.allocator);
+        defer queue.deinit();
+        var it = this.board_graph.nodes.iterator();
+        while (it.next()) |n| {
+            if (this.board_graph.getNode(n.key_ptr.*).? == null) {
+                try queue.put(n.key_ptr.*, {});
+            }
+        }
+
+        var visited = BoardGraph.NodeSet.init(this.allocator);
+        defer visited.deinit();
+
+        var territory = Territory{
+            .black = BoardGraph.NodeSet.init(this.allocator),
+            .white = BoardGraph.NodeSet.init(this.allocator),
+            .allocator = this.allocator,
+        };
+
+        while (queue.count() > 0) {
+            const p = queue.pop().key;
+            if (visited.contains(p)) {
+                continue;
+            }
+            var search = try this.board_graph.seach(p, const_true, is_empty);
+            defer search.deinit();
+
+            var black_count: usize = 0;
+            var white_count: usize = 0;
+            for (search.seen.keys()) |k| {
+                _ = queue.swapRemove(k);
+                const color = this.board_graph.getNode(k).?;
+                if (color == .black) {
+                    black_count += 1;
+                } else if (color == .white) {
+                    white_count += 1;
+                }
+            }
+            if (black_count > 0 and white_count == 0) {
+                for (search.visited.keys()) |k| {
+                    try territory.black.put(k, {});
+                }
+            } else if (black_count == 0 and white_count > 0) {
+                for (search.visited.keys()) |k| {
+                    try territory.white.put(k, {});
+                }
+            }
+        }
+
+        return territory;
+    }
+
+    pub fn addTerritoryScore(this: *This, territory: *const Territory) void {
+        this.score.black += @floatFromInt(territory.black.count());
+        this.score.white += @floatFromInt(territory.white.count());
     }
 };
 
@@ -243,8 +313,6 @@ test "go" {
 
     try std.testing.expectEqual(cloned.getStone(4, 4), .black);
     try std.testing.expectEqual(board.getStone(4, 4), null);
-
-    // TODO test scoreTerritory
 }
 
 test "go capture in closed space" {
@@ -264,4 +332,34 @@ test "go capture in closed space" {
 
     try std.testing.expectEqual(board.getStone(1, 1), .white);
     try std.testing.expectEqual(board.getStone(2, 1), null);
+}
+
+test "go territory" {
+    var board = try Board.init(9, 9, std.testing.allocator);
+    defer board.deinit();
+    try board.createSquareBoard();
+
+    for (0..9) |i| {
+        try board.putStone(i, 2, .black);
+        try board.putStone(i, 7, .white);
+    }
+    var territory = try board.getTerritory();
+    defer territory.deinit();
+    try std.testing.expectEqual(territory.black.count(), 18);
+    try std.testing.expectEqual(territory.white.count(), 9);
+}
+
+test "go one color" {
+    var board = try Board.init(9, 9, std.testing.allocator);
+    defer board.deinit();
+    try board.createSquareBoard();
+
+    for (0..9) |i| {
+        try board.putStone(i, 2, .black);
+        try board.putStone(i, 7, .black);
+    }
+    var territory = try board.getTerritory();
+    defer territory.deinit();
+    try std.testing.expectEqual(territory.black.count(), 63);
+    try std.testing.expectEqual(territory.white.count(), 0);
 }

@@ -3,6 +3,7 @@ const board = @import("board.zig");
 
 pub const StoneColor = board.Board.StoneColor;
 pub const Score = board.Board.Score;
+pub const Territory = board.Board.Territory;
 
 pub const Game = struct {
     const This = @This();
@@ -86,6 +87,14 @@ pub const Game = struct {
 
     pub fn removeStone(this: *This, x: usize, y: usize) !void {
         try this.go_board.removeStone(x, y);
+    }
+
+    pub fn getTerritory(this: *const This) !Territory {
+        return try this.go_board.getTerritory();
+    }
+
+    pub fn addTerritoryScore(this: *This, territory: *const Territory) void {
+        this.go_board.addTerritoryScore(territory);
     }
 };
 
