@@ -29,6 +29,15 @@ fn squarePositionToScreen(x: c_int, y: c_int) std.meta.Tuple(&.{ c_int, c_int })
     };
 }
 
+fn screenToSquarePosition(x: f32, y: f32) std.meta.Tuple(&.{ c_int, c_int }) {
+    const mouse_x: i32 = @intFromFloat(x + stone_size);
+    const mouse_y: i32 = @intFromFloat(y + stone_size);
+    return .{
+        @divTrunc(mouse_x - board_offset_x, @divTrunc(board_width, board_dim - 1)),
+        @divTrunc(mouse_y - board_offset_y, @divTrunc(board_height, board_dim - 1)),
+    };
+}
+
 fn drawGame(game: *const go.Game) !void {
     drawLines();
     drawStones(game);
@@ -153,17 +162,13 @@ fn drawInstructions() void {
     }
 }
 
-// TODO refactor
 fn updatePlaying(game: *go.Game) void {
     if (r.IsMouseButtonPressed(r.MOUSE_LEFT_BUTTON)) {
         const mouse_pos = r.GetMousePosition();
-        const mouse_x: i32 = @intFromFloat(mouse_pos.x + stone_size);
-        const mouse_y: i32 = @intFromFloat(mouse_pos.y + stone_size);
-        const stone_x = @divTrunc(mouse_x - board_offset_x, @divTrunc(board_width, board_dim - 1));
-        const stone_y = @divTrunc(mouse_y - board_offset_y, @divTrunc(board_height, board_dim - 1));
-        if (stone_x >= 0 and stone_x < board_dim and stone_y >= 0 and stone_y < board_dim) {
-            const stone_xx: usize = @intCast(stone_x);
-            const stone_yy: usize = @intCast(stone_y);
+        const pos = screenToSquarePosition(mouse_pos.x, mouse_pos.y);
+        if (pos[0] >= 0 and pos[0] < board_dim and pos[1] >= 0 and pos[1] < board_dim) {
+            const stone_xx: usize = @intCast(pos[0]);
+            const stone_yy: usize = @intCast(pos[1]);
             game.putStone(stone_xx, stone_yy) catch |err| {
                 std.debug.print("Error: {?}\n", .{err});
             };
@@ -174,17 +179,13 @@ fn updatePlaying(game: *go.Game) void {
     }
 }
 
-// TODO refactor
 fn updateRemoveDeadStones(game: *go.Game) !void {
     if (r.IsMouseButtonPressed(r.MOUSE_LEFT_BUTTON)) {
         const mouse_pos = r.GetMousePosition();
-        const mouse_x: i32 = @intFromFloat(mouse_pos.x + stone_size);
-        const mouse_y: i32 = @intFromFloat(mouse_pos.y + stone_size);
-        const stone_x = @divTrunc(mouse_x - board_offset_x, @divTrunc(board_width, board_dim - 1));
-        const stone_y = @divTrunc(mouse_y - board_offset_y, @divTrunc(board_height, board_dim - 1));
-        if (stone_x >= 0 and stone_x < board_dim and stone_y >= 0 and stone_y < board_dim) {
-            const stone_xx: usize = @intCast(stone_x);
-            const stone_yy: usize = @intCast(stone_y);
+        const pos = screenToSquarePosition(mouse_pos.x, mouse_pos.y);
+        if (pos[0] >= 0 and pos[0] < board_dim and pos[1] >= 0 and pos[1] < board_dim) {
+            const stone_xx: usize = @intCast(pos[0]);
+            const stone_yy: usize = @intCast(pos[1]);
             const stone = game.getStone(stone_xx, stone_yy);
             if (stone) |s| {
                 _ = s;
